@@ -2,8 +2,15 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "bia.h"
 #include "hcsr04.h"
 #include "hx711.h"
+
+// Demo user profile — replace once host UART input is wired up.
+#define USER_HEIGHT_CM 184.0f
+#define USER_WEIGHT_KG 71.0f
+#define USER_AGE       22
+#define USER_SEX       BIA_SEX_MALE
 
 #define CALIBRATION_SCALE 36000.0f
 #define NUM_SAMPLES 5
@@ -84,17 +91,38 @@ static void height_task(void *arg)
     }
 }
 
+static void bia_task(void *arg)
+{
+    (void)arg;
+
+    while (1) {
+        float z = 0.0f;
+        if (bia_measure_impedance_avg(&z)) {
+            float bf = bia_estimate_body_fat_pct(z, USER_HEIGHT_CM, USER_WEIGHT_KG,
+                                                 USER_AGE, USER_SEX);
+            printf("BIA: |Z| = %.1f ohm | BF%% = %.1f%%\n", z, bf);
+        } else {
+            printf("BIA: averaged read failed\n");
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
 void app_main(void)
 {
-    hx711_init();
-    hcsr04_init();
+    // hx711_init();
+    // hcsr04_init();
+    bia_init();
 
     printf("HX711 ready. Taking weight readings...\n");
     printf("HC-SR04 ready. TRIG=GPIO%d, ECHO=GPIO%d\n", HCSR04_TRIG_PIN, HCSR04_ECHO_PIN);
     printf("Note: ECHO must be level-shifted to 3.3V before connecting to the ESP32.\n");
-
-    xTaskCreate(weight_task, "weight_task", 4096, NULL, 5, NULL);
-    xTaskCreate(height_task, "height_task", 4096, NULL, 5, NULL);
+    printf("BIA ready. DAC sine on GPIO%d, ADC sense on GPIO%d.\n",
+           BIA_DAC_GPIO, BIA_ADC_GPIO);
+    
+    // xTaskCreate(weight_task, "weight_task", 4096, NULL, 5, NULL);
+    // xTaskCreate(height_task, "height_task", 4096, NULL, 5, NULL);
+    xTaskCreate(bia_task,    "bia_task",    4096, NULL, 5, NULL);
 
     vTaskDelete(NULL);
 }
