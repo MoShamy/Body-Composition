@@ -4,7 +4,7 @@
 | ------------- | ------------- |
 | Mostafa Elshamy | [MoShamy](https://github.com/MoShamy) |
 | Ahmed Elkhodary | [aae121](https://github.com/aae121) |
-| Kareem Sayed | [kareems394](https://github.com/kareems395)|
+| Kareem Sayed | [kareems394](https://github.com/kareems394)|
 
 **Github Repo:** https://github.com/MoShamy/Body-Composition
 
@@ -72,7 +72,51 @@ Description of the firmware design (e.g., Bare-metal Superloop, Interrupt-driven
 Visual diagrams mapping out the core logic, state transitions, and interrupt service routines (ISRs).
 
 ## Key Algorithms: 
-Explanations of any complex logic used (e.g., PID control loops, digital filtering, sensor fusion).
+
+### Goertzel Algorithm (Single-Bin DFT)
+
+The core measurement algorithm for bioelectrical impedance analysis. It extracts the amplitude of a specific frequency component (50 kHz) from digitally sampled ADC data with minimal computational overhead.
+
+**Purpose:** Isolate the 50 kHz AC current response signal from the body impedance measurement, rejecting noise at other frequencies.
+
+**How it works:**
+- Uses a recursive feedback resonator with three state variables (q0, q1, q2)
+- For each ADC sample, applies: `q0 = coeff·q1 - q2 + x[i]`, then updates q2 and q1
+- After processing all samples, computes magnitude: `amplitude = √(real² + imag²)` where:
+  - `real = q1 - q2·cos(ω)`
+  - `imag = q2·sin(ω)`
+  - `ω = 2π·f_target·n / f_sample`
+
+**Why we used it in our Embedded System:**
+- O(n) complexity instead of O(n log n) for FFT
+- Single-frequency focus eliminates unnecessary computation
+- Minimal memory footprint ideal for ESP32 constraints
+- Real-time capable with FreeRTOS task timing
+
+**Implementation in project:**
+- Processes 1024 ADC samples at 200 kHz sample rate (5.12 ms window)
+- Measures impedance at injection frequency (50 kHz)
+- Output amplitude directly converts to body impedance via Ohm's law and AD620 instrumentation amplifier gain
+
+### Body Composition Equations
+
+**Deurenberg Single-Frequency BIA Model:**
+```
+FFM (kg) = -12.44 + 0.34·(H²/Z) + 0.1534·H + 0.273·W - 0.127·A + 4.56·S
+```
+Where:
+- H = height (cm)
+- Z = impedance (Ω)
+- W = weight (kg)
+- A = age (years)
+- S = sex (1=male, 0=female)
+
+**Body Fat Percentage:**
+```
+BF% = (W - FFM) / W × 100
+```
+
+Used for converting raw impedance measurement into clinically relevant body composition metrics.
 
 ## Development Environment: 
 Compilers, IDEs, and toolchains used (e.g., Keil, PlatformIO, STM32CubeIDE).

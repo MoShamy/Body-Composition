@@ -80,7 +80,7 @@ void bia_init(void)
 static float goertzel_amplitude(const float *x, int n, float fs, float ftarget)
 {
     float k     = ftarget * (float)n / fs;
-    float omega = 2.0f * (float)M_PI * k / (float)n;
+    float omega = 2.0f * (float)M_PI * k / (float)n; /* normalized in radians */
     float c     = cosf(omega);
     float s     = sinf(omega);
     float coeff = 2.0f * c;
@@ -106,6 +106,7 @@ bool bia_measure_impedance(float *z_ohms)
     esp_err_t err = adc_continuous_read(s_adc, raw_buf, sizeof(raw_buf),
                                         &out_len, pdMS_TO_TICKS(100));
     if (err != ESP_OK || out_len == 0) {
+        /* error check for ADC*/
         ESP_LOGW(TAG, "ADC read failed: %s", esp_err_to_name(err));
         return false;
     }
@@ -152,6 +153,7 @@ bool bia_measure_impedance_avg(float *z_ohms)
     float buf[N_READS];
     int n = 0;
 
+    /* read 20 measurments*/
     for (int i = 0; i < N_READS; i++) {
         float z;
         if (bia_measure_impedance(&z)) {
@@ -160,10 +162,12 @@ bool bia_measure_impedance_avg(float *z_ohms)
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 
+    /* make sure we have enough valid readings */
     if (n < N_READS - 4) {
         return false;
     }
 
+    /* sort the readings using cmp_float helper function*/
     qsort(buf, n, sizeof(float), cmp_float);
 
     int lo = TRIM, hi = n - TRIM;
@@ -172,6 +176,7 @@ bool bia_measure_impedance_avg(float *z_ohms)
     }
 
     float sum = 0.0f;
+    /* take average of trimmed readings */
     for (int i = lo; i < hi; i++) {
         sum += buf[i];
     }
