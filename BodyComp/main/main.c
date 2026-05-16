@@ -113,6 +113,8 @@ void app_main(void)
     // hx711_init();
     // hcsr04_init();
     bia_init();
+    // Allow DAC/ADC hardware to stabilize before taking measurements
+    vTaskDelay(pdMS_TO_TICKS(50));
 
     printf("HX711 ready. Taking weight readings...\n");
     printf("HC-SR04 ready. TRIG=GPIO%d, ECHO=GPIO%d\n", HCSR04_TRIG_PIN, HCSR04_ECHO_PIN);
