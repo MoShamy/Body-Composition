@@ -14,7 +14,7 @@
 
 Knowing the composition of your body is essential to understanding your health, and achieving your fitness goals. Most people's home scales do nothing more than telling you your weight, were trying to take this to the next level. Our Body Composition Analyzer seeks to give users a more complete understanding of their body, by determining their Body Fat percentage, Total Body Water, Skeletal Muscle Mass, and other vital metrics for physical health.
 
-Based on the ESP32 Microcontroller, our system will utilise an AC current modulator and sensor (combined with an instrumentation amplifier) to measure bodily impedence, a load cell (and subsequent ADC) to measure weight, and an ultrasonic sensor to measure height. Via a laptop, the user will be able to input their age and sex, and will be displayed the derived metrics, obtained from the measured sensory data points. The program will be running on the ESP32's built in RTOS: FreeRTOS. 
+Based on the ESP32 Microcontroller, our system will utilise an AC current modulator and sensor (combined with an instrumentation amplifier) to measure bodily impedence, a load cell (and subsequent ADC) to measure weight, and an ultrasonic sensor to measure height. Via a mobile app, using bluetooth, the user will be able to input their age and sex, and will be displayed the derived metrics, obtained from the measured sensory data points. The program will be running on the ESP32's built in RTOS: FreeRTOS. 
 
 To initiate the process, the user will enter the required information into the laptop, then stand on the scale. Metal electrodes will then be attached to their hands, and the ultrasonic sensor at a distance above. Once measurments are taken, and metrics generated, the GUI will present the values to the user. 
 
@@ -118,8 +118,39 @@ BF% = (W - FFM) / W × 100
 
 Used for converting raw impedance measurement into clinically relevant body composition metrics.
 
+### Current Firmware Architecture
+
+The current prototype runs as a BLE-driven ESP32 firmware rather than a laptop-tethered demo.
+
+**Technologies used:**
+- ESP32 with ESP-IDF 6.1.0
+- FreeRTOS for task scheduling
+- NimBLE GATT for the mobile control plane
+- HX711 for weight acquisition
+- HC-SR04 for height measurement
+- DAC + ADC + Goertzel for BIA impedance measurement
+
+**Task structure:**
+- `app_main()` initializes the sensors, BLE stack, and measurement manager
+- `ble_service_init()` brings up NimBLE, configures the GATT service, and starts advertising
+- `ble_host_task()` runs the NimBLE event loop
+- `measurement_manager` waits for a BLE start command and runs the weight, height, and BIA cycle
+
+**BLE control plane:**
+- Device name: `BodyComp`
+- Primary service UUID: `12345678-1234-5678-1234-567812345678`
+- Characteristics:
+  - User Profile: read/write age and sex
+  - Measurement Start: write `0x01` to trigger a measurement
+  - Status: read/notify state, error code, and progress
+  - Result: read/notify weight, height, impedance, body fat percentage, and FFM
+
+
+**Implementation notes:**
+- NimBLE UUID byte order is little-endian in code, so the displayed UUID string must be interpreted carefully when defining 128-bit values.
+
 ## Development Environment: 
-Compilers, IDEs, and toolchains used (e.g., Keil, PlatformIO, STM32CubeIDE).
+ESP-IDF 6.1.0, ESP32 toolchain, FreeRTOS, and NimBLE BLE stack. Development and validation were done from VS Code with the ESP-IDF extension, and iPhone-side testing used nRF Connect as the BLE client.
 
 # 5. Testing, Validation & Debugging
 
@@ -129,8 +160,15 @@ How individual hardware components and software functions were tested in isolati
 ## Integration Testing: 
 How the system was tested as a whole.
 
+The current integration path is BLE-first: the ESP32 advertises as BodyComp, an iPhone connects through nRF Connect, the app writes age and sex, and the firmware triggers the measurement manager task to collect weight, height, and BIA in a single cycle. Status and result data are exposed as BLE notifications so the full demo can run without a custom mobile app.
+
 ## Challenges & Solutions: 
 A log of major bugs, hardware failures, or design flaws you encountered, and the engineering steps you took to solve them.
+
+Notable issues resolved during this session:
+- NimBLE initialization order caused a LoadProhibited panic when GAP/GATT services were initialized before `nimble_port_init()`.
+- 128-bit UUIDs appeared reversed in the scanner until the NimBLE byte order was corrected.
+- The device name was added to advertising so the phone could clearly identify the correct ESP32.
 
 # 6. Results & Demonstration
 
