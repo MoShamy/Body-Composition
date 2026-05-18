@@ -47,7 +47,7 @@ static bool measure_height(float *height_cm)
 
         if (hcsr04_read_pulse_width(&pulse_width_us, pdMS_TO_TICKS(40))) {
             float distance_cm = (float)pulse_width_us / 58.0f;
-            float sample_height_cm = SENSOR_HEIGHT_CM - distance_cm;
+            float sample_height_cm = distance_cm;
 
             if (sample_height_cm < 0.0f) {
                 sample_height_cm = 0.0f;

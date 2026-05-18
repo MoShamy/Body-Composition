@@ -29,7 +29,7 @@
 //   InBody-implied Z (Deurenberg back-solve) ≈ 502.7 Ω
 //   our raw reading at I = 5.67e-6 A was 1423.3 Ω  -> scale factor 2.8312
 //   I_new = 5.67e-6 * 2.8312 ≈ 1.605e-5 A
-#define INJECTION_CURRENT_RMS_A   1.605e-5f
+#define INJECTION_CURRENT_RMS_A   1.0e-5f
 
 #define ADC_VREF_V           3.3f
 #define ADC_FULL_SCALE       4095.0f
