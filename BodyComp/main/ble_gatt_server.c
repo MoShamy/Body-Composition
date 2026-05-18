@@ -89,6 +89,7 @@ void ble_service_publish_status(ble_measurement_status_t status, uint8_t error_c
 
 void ble_service_publish_result(const ble_measurement_result_t *result)
 {
+    ESP_LOGI(TAG, "Publishing measurement result...");
     if (result == NULL) {
         ESP_LOGW(TAG, "Attempted to publish a NULL measurement result");
         return;

@@ -49,9 +49,12 @@ static uint16_t s_status_handle;
 static uint16_t s_result_handle;
 
 static uint8_t own_addr_type;
+static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 
 static int ble_gatt_svc_access(uint16_t conn_handle, uint16_t attr_handle,
                                struct ble_gatt_access_ctxt *ctxt, void *arg);
+static int ble_gap_event_cb(struct ble_gap_event *event, void *arg);
+static void ble_advertise(void);
 
 static const struct ble_gatt_svc_def bia_gatt_svcs[] = {
     {
@@ -103,8 +106,9 @@ static int ble_gatt_svc_access(uint16_t conn_handle, uint16_t attr_handle,
                 uint8_t *data = ctxt->om->om_data;
                 s_profile.age = data[0];
                 s_profile.sex = (bia_sex_t)data[1];
-                ESP_LOGI(TAG, "User profile updated: age=%u sex=%u",
-                         s_profile.age, s_profile.sex);
+                int active = ble_gap_conn_active();
+                ESP_LOGI(TAG, "User profile updated: age=%u sex=%u active_conns=%d",
+                         s_profile.age, s_profile.sex, active);
                 return 0;
             }
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
@@ -114,7 +118,8 @@ static int ble_gatt_svc_access(uint16_t conn_handle, uint16_t attr_handle,
             if (ctxt->om->om_len >= 1) {
                 uint8_t cmd = ctxt->om->om_data[0];
                 if (cmd == 1) {
-                    ESP_LOGI(TAG, "Measurement start command received");
+                    int active = ble_gap_conn_active();
+                    ESP_LOGI(TAG, "Measurement start command received active_conns=%d", active);
                     if (s_start_handler != NULL) {
                         s_start_handler(&s_profile, s_start_context);
                     }
@@ -174,11 +179,50 @@ static void ble_advertise(void)
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
     rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER,
-                           &adv_params, NULL, NULL);
+                           &adv_params, ble_gap_event_cb, NULL);
     if (rc != 0) {
         ESP_LOGE(TAG, "Failed to start advertising, rc=%d", rc);
     } else {
         ESP_LOGI(TAG, "BLE advertising started");
+    }
+}
+
+static int ble_gap_event_cb(struct ble_gap_event *event, void *arg)
+{
+    (void)arg;
+
+    switch (event->type) {
+    case BLE_GAP_EVENT_CONNECT:
+        if (event->connect.status == 0) {
+            s_conn_handle = event->connect.conn_handle;
+            ESP_LOGI(TAG, "Central connected, conn_handle=%u", s_conn_handle);
+        } else {
+            ESP_LOGW(TAG, "Connection failed, status=%d - restarting adv",
+                     event->connect.status);
+            ble_advertise();
+        }
+        return 0;
+
+    case BLE_GAP_EVENT_DISCONNECT:
+        ESP_LOGI(TAG, "Central disconnected, reason=%d", event->disconnect.reason);
+        s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
+        ble_advertise();
+        return 0;
+
+    case BLE_GAP_EVENT_SUBSCRIBE:
+        ESP_LOGI(TAG, "Subscribe: handle=%u cur_notify=%u cur_indicate=%u",
+                 event->subscribe.attr_handle,
+                 event->subscribe.cur_notify,
+                 event->subscribe.cur_indicate);
+        return 0;
+
+    case BLE_GAP_EVENT_MTU:
+        ESP_LOGI(TAG, "MTU updated: conn_handle=%u mtu=%u",
+                 event->mtu.conn_handle, event->mtu.value);
+        return 0;
+
+    default:
+        return 0;
     }
 }
 
@@ -287,9 +331,16 @@ void ble_service_publish_status(ble_measurement_status_t status, uint8_t error_c
     ESP_LOGI(TAG, "Status=%u error=%u progress=%u%%",
              status, error_code, progress_percent);
 
-    if (ble_gap_conn_active() > 0) {
-        uint8_t buf[3] = {status, error_code, progress_percent};
-        ble_gatts_notify_custom(0, s_status_handle, NULL);
+    if (s_conn_handle != BLE_HS_CONN_HANDLE_NONE) {
+        uint8_t buf[3] = {(uint8_t)status, error_code, progress_percent};
+        struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, sizeof(buf));
+        if (om == NULL) {
+            ESP_LOGE(TAG, "Failed to allocate mbuf for status notify");
+            return;
+        }
+        int rc = ble_gatts_notify_custom(s_conn_handle, s_status_handle, om);
+        ESP_LOGI(TAG, "Notify status conn=%u handle=%u rc=%d",
+                 s_conn_handle, s_status_handle, rc);
     }
 }
 
@@ -307,7 +358,21 @@ void ble_service_publish_result(const ble_measurement_result_t *result)
              result->weight_kg, result->height_cm, result->z_ohms,
              result->body_fat_pct, result->ffm_kg);
 
-    if (ble_gap_conn_active() > 0) {
-        ble_gatts_notify_custom(0, s_result_handle, NULL);
+    if (s_conn_handle != BLE_HS_CONN_HANDLE_NONE) {
+        uint8_t buf[20];
+        int offset = 0;
+        memcpy(&buf[offset], &s_last_result.weight_kg,   4); offset += 4;
+        memcpy(&buf[offset], &s_last_result.height_cm,   4); offset += 4;
+        memcpy(&buf[offset], &s_last_result.z_ohms,      4); offset += 4;
+        memcpy(&buf[offset], &s_last_result.body_fat_pct,4); offset += 4;
+        memcpy(&buf[offset], &s_last_result.ffm_kg,      4); offset += 4;
+        struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, offset);
+        if (om == NULL) {
+            ESP_LOGE(TAG, "Failed to allocate mbuf for result notify");
+            return;
+        }
+        int rc = ble_gatts_notify_custom(s_conn_handle, s_result_handle, om);
+        ESP_LOGI(TAG, "Notify result conn=%u handle=%u rc=%d",
+                 s_conn_handle, s_result_handle, rc);
     }
 }
