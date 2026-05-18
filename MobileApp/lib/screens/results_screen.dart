@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../ble/body_comp_service.dart';
+import 'profile_screen.dart';
 
 class ResultsScreen extends StatelessWidget {
   final MeasurementResult result;
@@ -47,7 +48,11 @@ class ResultsScreen extends StatelessWidget {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () {
+                    Navigator.of(context).pushReplacement(MaterialPageRoute(
+                      builder: (_) => ProfileScreen(service: service),
+                    ));
+                  },
                   icon: const Icon(Icons.refresh),
                   label: const Text('New Measurement'),
                 ),
