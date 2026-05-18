@@ -16,33 +16,42 @@ class ScanScreen extends StatefulWidget {
 }
 
 class _ScanScreenState extends State<ScanScreen> {
-  final List<ScanResult> _results = [];
   StreamSubscription<List<ScanResult>>? _sub;
   bool _scanning = false;
+  bool _connecting = false;
+  bool _stopped = false;
+  String _statusMsg = 'Starting…';
   String? _error;
 
   @override
   void initState() {
     super.initState();
     _sub = FlutterBluePlus.scanResults.listen((rs) {
-      setState(() {
-        _results
-          ..clear()
-          ..addAll(rs);
-      });
+      if (_connecting || _stopped) return;
+      for (final r in rs) {
+        final name = r.device.platformName.isEmpty
+            ? r.advertisementData.advName
+            : r.device.platformName;
+        if (name == BleIds.deviceName) {
+          _connecting = true;
+          FlutterBluePlus.stopScan();
+          _connect(r.device);
+          break;
+        }
+      }
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoConnectLoop());
   }
 
   @override
   void dispose() {
+    _stopped = true;
     _sub?.cancel();
     FlutterBluePlus.stopScan();
     super.dispose();
   }
 
   Future<bool> _ensurePermissions() async {
-    // iOS only needs the Bluetooth usage prompt (handled automatically when
-    // the BLE stack is first touched). No runtime permission_handler call needed.
     if (Platform.isIOS) {
       final s = await Permission.bluetooth.request();
       return s.isGranted || s.isLimited || s.isRestricted == false;
@@ -55,96 +64,94 @@ class _ScanScreenState extends State<ScanScreen> {
     return statuses.values.every((s) => s.isGranted || s.isLimited);
   }
 
-  Future<void> _startScan() async {
-    setState(() { _error = null; _results.clear(); });
+  Future<void> _autoConnectLoop() async {
     if (!await _ensurePermissions()) {
       setState(() => _error = 'Bluetooth permissions denied');
       return;
     }
-    setState(() => _scanning = true);
-    try {
-      await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 8),
-        withServices: [BleIds.service],
-      );
-      await FlutterBluePlus.isScanning.where((s) => s == false).first;
-    } catch (e) {
-      setState(() => _error = '$e');
-    } finally {
-      if (mounted) setState(() => _scanning = false);
+    while (!_stopped && !_connecting) {
+      setState(() {
+        _scanning = true;
+        _statusMsg = 'Scanning for BodyComp…';
+        _error = null;
+      });
+      try {
+        await FlutterBluePlus.startScan(
+          timeout: const Duration(seconds: 6),
+          withServices: [BleIds.service],
+        );
+        await FlutterBluePlus.isScanning.where((s) => s == false).first;
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _error = '$e');
+      }
+      if (_connecting || _stopped) break;
+      if (!mounted) return;
+      setState(() {
+        _scanning = false;
+        _statusMsg = 'Device not found, retrying…';
+      });
+      await Future.delayed(const Duration(seconds: 1));
+    }
+    if (mounted && !_connecting) {
+      setState(() => _scanning = false);
     }
   }
 
   Future<void> _connect(BluetoothDevice d) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
+    setState(() {
+      _scanning = false;
+      _statusMsg = 'Connecting to BodyComp…';
+    });
     final svc = BodyCompService(d);
     try {
       await svc.connectAndDiscover();
       if (!mounted) return;
-      Navigator.of(context).pop();
-      Navigator.of(context).push(MaterialPageRoute(
+      _stopped = true;
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
         builder: (_) => ProfileScreen(service: svc),
       ));
     } catch (e) {
       if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Connect failed: $e')),
-      );
+      setState(() {
+        _error = 'Connect failed: $e';
+        _connecting = false;
+      });
+      _autoConnectLoop();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _results
-        .where((r) => r.device.platformName == BleIds.deviceName ||
-                      r.advertisementData.advName == BleIds.deviceName)
-        .toList();
-
     return Scaffold(
       appBar: AppBar(title: const Text('BodyComp Scanner')),
-      body: Column(
-        children: [
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
-            ),
-          Expanded(
-            child: filtered.isEmpty
-                ? Center(
-                    child: Text(_scanning
-                        ? 'Scanning…'
-                        : 'No BodyComp device found.\nTap Scan to search.'),
-                  )
-                : ListView.builder(
-                    itemCount: filtered.length,
-                    itemBuilder: (_, i) {
-                      final r = filtered[i];
-                      return ListTile(
-                        leading: const Icon(Icons.bluetooth),
-                        title: Text(r.device.platformName.isEmpty
-                            ? r.advertisementData.advName
-                            : r.device.platformName),
-                        subtitle: Text('${r.device.remoteId}   RSSI ${r.rssi}'),
-                        trailing: ElevatedButton(
-                          onPressed: () => _connect(r.device),
-                          child: const Text('Connect'),
-                        ),
-                      );
-                    },
-                  ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.bluetooth_searching, size: 72),
+              const SizedBox(height: 24),
+              if (_scanning || _connecting)
+                const CircularProgressIndicator()
+              else
+                const SizedBox(height: 4),
+              const SizedBox(height: 24),
+              Text(
+                _statusMsg,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                Text(_error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.red)),
+              ],
+            ],
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _scanning ? null : _startScan,
-        icon: Icon(_scanning ? Icons.hourglass_top : Icons.search),
-        label: Text(_scanning ? 'Scanning' : 'Scan'),
+        ),
       ),
     );
   }
