@@ -28,11 +28,12 @@ add_string "NSBluetoothAlwaysUsageDescription" \
   "Connects to the BodyComp scale to receive your body composition measurements."
 add_string "NSBluetoothPeripheralUsageDescription" \
   "Connects to the BodyComp scale to receive your body composition measurements."
-add_string "UIBackgroundModes" "" 2>/dev/null || true
+
 # Allow background BLE (optional, useful if the demo is interrupted)
-if ! $PB -c "Print :UIBackgroundModes" "$PLIST" >/dev/null 2>&1; then
-  $PB -c "Add :UIBackgroundModes array" "$PLIST"
-fi
+# First, delete UIBackgroundModes if it exists (could be a string from previous runs)
+$PB -c "Delete :UIBackgroundModes" "$PLIST" 2>/dev/null || true
+# Then add it as an array
+$PB -c "Add :UIBackgroundModes array" "$PLIST"
 if ! $PB -c "Print :UIBackgroundModes" "$PLIST" 2>/dev/null | grep -q bluetooth-central; then
   $PB -c "Add :UIBackgroundModes: string bluetooth-central" "$PLIST"
 fi

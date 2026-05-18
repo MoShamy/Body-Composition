@@ -103,8 +103,9 @@ static int ble_gatt_svc_access(uint16_t conn_handle, uint16_t attr_handle,
                 uint8_t *data = ctxt->om->om_data;
                 s_profile.age = data[0];
                 s_profile.sex = (bia_sex_t)data[1];
-                ESP_LOGI(TAG, "User profile updated: age=%u sex=%u",
-                         s_profile.age, s_profile.sex);
+                int active = ble_gap_conn_active();
+                ESP_LOGI(TAG, "User profile updated: age=%u sex=%u active_conns=%d",
+                         s_profile.age, s_profile.sex, active);
                 return 0;
             }
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
@@ -114,7 +115,8 @@ static int ble_gatt_svc_access(uint16_t conn_handle, uint16_t attr_handle,
             if (ctxt->om->om_len >= 1) {
                 uint8_t cmd = ctxt->om->om_data[0];
                 if (cmd == 1) {
-                    ESP_LOGI(TAG, "Measurement start command received");
+                    int active = ble_gap_conn_active();
+                    ESP_LOGI(TAG, "Measurement start command received active_conns=%d", active);
                     if (s_start_handler != NULL) {
                         s_start_handler(&s_profile, s_start_context);
                     }
@@ -289,7 +291,10 @@ void ble_service_publish_status(ble_measurement_status_t status, uint8_t error_c
 
     if (ble_gap_conn_active() > 0) {
         uint8_t buf[3] = {status, error_code, progress_percent};
-        ble_gatts_notify_custom(0, s_status_handle, NULL);
+        int active = ble_gap_conn_active();
+        ESP_LOGI(TAG, "Notifying status: active_conns=%d", active);
+        int rc = ble_gatts_notify_custom(0, s_status_handle, NULL);
+        ESP_LOGI(TAG, "ble_gatts_notify_custom(status) rc=%d", rc);
     }
 }
 
@@ -308,6 +313,9 @@ void ble_service_publish_result(const ble_measurement_result_t *result)
              result->body_fat_pct, result->ffm_kg);
 
     if (ble_gap_conn_active() > 0) {
-        ble_gatts_notify_custom(0, s_result_handle, NULL);
+        int active = ble_gap_conn_active();
+        ESP_LOGI(TAG, "Notifying result: active_conns=%d", active);
+        int rc = ble_gatts_notify_custom(0, s_result_handle, NULL);
+        ESP_LOGI(TAG, "ble_gatts_notify_custom(result) rc=%d", rc);
     }
 }
