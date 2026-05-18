@@ -44,33 +44,14 @@ class ResultsScreen extends StatelessWidget {
           _metric('Fat-Free Mass', '${result.ffmKg.toStringAsFixed(2)} kg',
               Icons.fitness_center),
           const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).pushReplacement(MaterialPageRoute(
-                      builder: (_) => ProfileScreen(service: service),
-                    ));
-                  },
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('New Measurement'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    await service.disconnect();
-                    if (context.mounted) {
-                      Navigator.of(context).popUntil((r) => r.isFirst);
-                    }
-                  },
-                  icon: const Icon(Icons.bluetooth_disabled),
-                  label: const Text('Disconnect'),
-                ),
-              ),
-            ],
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.of(context).pushReplacement(MaterialPageRoute(
+                builder: (_) => ProfileScreen(service: service),
+              ));
+            },
+            icon: const Icon(Icons.refresh),
+            label: const Text('New Measurement'),
           ),
         ],
       ),
