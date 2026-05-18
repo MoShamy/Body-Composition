@@ -24,9 +24,12 @@
 
 // V2I converter: I = V_DAC_AC / R2.  With ~3.3 Vpp DAC swing and R2 = 10 kΩ:
 //   Vpp_DAC / R2 = 330 µA pp -> ~117 µA rms.
-// MUST be re-tuned empirically against a known reference resistor (e.g. 500 Ω in
-// place of the body) before any clinical interpretation.
-#define INJECTION_CURRENT_RMS_A   5.67e-6f
+// Calibrated empirically against an InBody professional reading:
+//   subject: male, age 22, H = 184 cm, W = 69.5 kg, BF = 14.5%
+//   InBody-implied Z (Deurenberg back-solve) ≈ 502.7 Ω
+//   our raw reading at I = 5.67e-6 A was 1423.3 Ω  -> scale factor 2.8312
+//   I_new = 5.67e-6 * 2.8312 ≈ 1.605e-5 A
+#define INJECTION_CURRENT_RMS_A   1.605e-5f
 
 #define ADC_VREF_V           3.3f
 #define ADC_FULL_SCALE       4095.0f
