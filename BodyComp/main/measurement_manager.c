@@ -11,7 +11,8 @@
 
 static const char *TAG = "measurement_mgr";
 
-#define CALIBRATION_SCALE 36000.0f
+#define CALIBRATION_SCALE  38742.0f
+#define CALIBRATION_OFFSET 20034
 #define SENSOR_HEIGHT_CM  200.0f
 #define WEIGHT_SAMPLES    5
 #define HEIGHT_SAMPLES    5
@@ -28,7 +29,7 @@ static bool measure_weight(float *weight_kg)
 
     for (int i = 0; i < WEIGHT_SAMPLES; i++) {
         int32_t raw = hx711_read();
-        float reading = (float)raw / CALIBRATION_SCALE;
+        float reading = (float)(raw - CALIBRATION_OFFSET) / CALIBRATION_SCALE;
         sum += reading;
         vTaskDelay(pdMS_TO_TICKS(200));
     }
